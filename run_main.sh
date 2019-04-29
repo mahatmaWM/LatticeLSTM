@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 python main.py --status train \
 		--train ../data/onto4ner.cn/train.char.bmes \
 		--dev ../data/onto4ner.cn/dev.char.bmes \
