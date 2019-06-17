@@ -2,8 +2,8 @@
 import torch
 from torch import nn
 import torch.autograd as autograd
-from torch.autograd import Variable
-from torch.nn import functional, init
+import logging
+from torch.nn import init
 import numpy as np
 
 
@@ -50,7 +50,7 @@ class WordLSTMCell(nn.Module):
         Returns:
             h_1, c_1: Tensors containing the next hidden and cell state.
         """
-
+        # 对应论文公式13
         h_0, c_0 = hx
         batch_size = h_0.size(0)
         bias_batch = (self.bias.unsqueeze(0).expand(batch_size, *self.bias.size()))
@@ -77,14 +77,10 @@ class MultiInputLSTMCell(nn.Module):
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.use_bias = use_bias
-        self.weight_ih = nn.Parameter(
-            torch.FloatTensor(input_size, 3 * hidden_size))
-        self.weight_hh = nn.Parameter(
-            torch.FloatTensor(hidden_size, 3 * hidden_size))
-        self.alpha_weight_ih = nn.Parameter(
-            torch.FloatTensor(input_size, hidden_size))
-        self.alpha_weight_hh = nn.Parameter(
-            torch.FloatTensor(hidden_size, hidden_size))
+        self.weight_ih = nn.Parameter(torch.FloatTensor(input_size, 3 * hidden_size))
+        self.weight_hh = nn.Parameter(torch.FloatTensor(hidden_size, 3 * hidden_size))
+        self.alpha_weight_ih = nn.Parameter(torch.FloatTensor(input_size, hidden_size))
+        self.alpha_weight_hh = nn.Parameter(torch.FloatTensor(hidden_size, hidden_size))
         if use_bias:
             self.bias = nn.Parameter(torch.FloatTensor(3 * hidden_size))
             self.alpha_bias = nn.Parameter(torch.FloatTensor(hidden_size))
@@ -145,14 +141,14 @@ class MultiInputLSTMCell(nn.Module):
         else:
             c_input_var = torch.cat(c_input, 0)
             alpha_bias_batch = (self.alpha_bias.unsqueeze(0).expand(batch_size, *self.alpha_bias.size()))
-            c_input_var = c_input_var.squeeze(1)  ## (c_num, hidden_dim)
+            c_input_var = c_input_var.squeeze(1)  # (c_num, hidden_dim)
             alpha_wi = torch.addmm(self.alpha_bias, input_, self.alpha_weight_ih).expand(c_num, self.hidden_size)
             alpha_wh = torch.mm(c_input_var, self.alpha_weight_hh)
             alpha = torch.sigmoid(alpha_wi + alpha_wh)
-            ## alpha  = i concat alpha
+            # alpha  = i concat alpha
             alpha = torch.exp(torch.cat([i, alpha], 0))
             alpha_sum = alpha.sum(0)
-            ## alpha = softmax for each hidden element
+            # alpha = softmax for each hidden element
             alpha = torch.div(alpha, alpha_sum)
             merge_i_c = torch.cat([g, c_input_var], 0)
             c_1 = merge_i_c * alpha
@@ -172,22 +168,19 @@ class LatticeLSTM(nn.Module):
                  left2right=True, fix_word_emb=True, gpu=True, use_bias=True):
         super(LatticeLSTM, self).__init__()
         skip_direction = "forward" if left2right else "backward"
-        print "build LatticeLSTM... ", skip_direction, ", Fix emb:", fix_word_emb, " gaz drop:", word_drop
+        logging.info("build LatticeLSTM:%s, Fix emb:%s, gaz drop:%s", skip_direction, fix_word_emb, word_drop)
         self.gpu = gpu
         self.hidden_dim = hidden_dim
         self.word_emb = nn.Embedding(word_alphabet_size, word_emb_dim)
-
         if pretrain_word_emb is not None:
-            print "load pretrain word emb...", pretrain_word_emb.shape
+            logging.info("load pre-train word emb: %s", pretrain_word_emb.shape)
             self.word_emb.weight.data.copy_(torch.from_numpy(pretrain_word_emb))
         else:
             self.word_emb.weight.data.copy_(torch.from_numpy(self.random_embedding(word_alphabet_size, word_emb_dim)))
 
         if fix_word_emb:
             self.word_emb.weight.requires_grad = False
-
         self.word_dropout = nn.Dropout(word_drop)
-
         self.rnn = MultiInputLSTMCell(input_dim, hidden_dim)
         self.word_rnn = WordLSTMCell(word_emb_dim, hidden_dim)
         self.left2right = left2right
@@ -204,12 +197,106 @@ class LatticeLSTM(nn.Module):
             pretrain_emb[index, :] = np.random.uniform(-scale, scale, [1, embedding_dim])
         return pretrain_emb
 
+    # input = tensor([[[-0.2966, 0.0000, 0.2534, ..., 0.3673, -0.3800, -0.0000],
+    #                  [0.2572, -0.0000, 0.1401, ..., -0.0000, -0.0000, -0.4829],
+    #                  [0.0000, -0.0000, 0.0000, ..., 0.0000, 0.4861, -0.2939],
+    #                  ...,
+    #                  [-0.0000, -0.0000, -0.2002, ..., -0.0000, 0.0000, 0.0000],
+    #                  [0.0000, -0.0000, 0.0000, ..., 0.0877, 0.0000, -0.0000],
+    #                  [0.0000, 0.4762, 0.0000, ..., -0.0000, 0.2801, 0.3032]],
+    #
+    #                 [[-0.0079, 0.4161, 0.3051, ..., 0.1863, -0.2186, 0.0000],
+    #                  [0.0000, -0.1738, 0.2618, ..., -0.4278, 0.0000, 0.4102],
+    #                  [0.3570, 0.4569, -0.2704, ..., 0.0000, 0.4804, 0.0000],
+    #                  ...,
+    #                  [0.4654, 0.3771, -0.0000, ..., 0.1383, -0.2938, 0.0000],
+    #                  [0.4654, 0.0000, -0.1377, ..., 0.1383, -0.0000, 0.0000],
+    #                  [0.0000, 0.0000, -0.0000, ..., 0.0000, -0.2938, 0.1544]]],
+    #                grad_fn= < MulBackward0 >), skip_input_list = [
+    #     [[], [[5443], [2]], [[8184], [2]], [], [[359], [2]], [], [], [], [], [], [[8185], [2]], [], [], [], [],
+    #      [[8186], [2]], [], [], [[4842], [2]], [], [[363], [2]], [], [], [[8187], [2]], [], []],
+    #     [[], [[2519], [2]], [], [[28], [2]], [], [[4569, 4570], [4, 3]], [[4571], [2]], [], [], [[174], [2]],
+    #      [[4572], [2]], [[11], [2]], [], [[284], [2]], [], [[4573, 4574], [3, 2]], [[4575], [2]], [[3976], [2]],
+    #      [[472], [2]], []], False]
+    # TODO 这里要改一个支持batch操作的
+    def forward_v2(self, input_tensors, skip_input_list, hidden=None):
+        """
+        input: variable (batch, seq_len), batch = 1
+        skip_input_list: [skip_input, volatile_flag]
+        skip_input: three dimension list, with length is seq_len.
+                    Each element is a list of matched word id and its length.
+                    example: [[], [[25,13],[2,3]]] 25/13 is word id, 2,3 is word length .
+        """
+        logging.info('input=%s, skip_input_list=%s', input_tensors, skip_input_list)
+        volatile_flag = skip_input_list[-1]
+        skip_input_list = skip_input_list[0:-1]
+        # logging.info('skip_input_list=%s', skip_input_list)
+        for i in range(len(skip_input_list)):
+            skip_input = skip_input_list[i]
+            # logging.info('volatile_flag=%s, skip_input=%s', volatile_flag, skip_input)
+            # logging.info('skip_input=%s', skip_input)
+            if not self.left2right:
+                # logging.info('xxxxxxxxxxxxxxxxxxx')
+                skip_input = convert_forward_gaz_to_backward(skip_input)
+            # logging.info('xxxxxxxxxxxxxxxxxxx')
+            # logging.info('skip_input=%s', skip_input)
+            # logging.info('input tensors size =%s', input_tensors.size())
+            input = input_tensors[i, :, :]
+            # logging.info('input=%s', input)
+            # logging.info('input size =%s', input.size())
+            input = input.transpose(1, 0)
+            seq_len = input.size(0)
+            batch_size = 1
+            # logging.info('seq_len=%s, batch_size=%s', seq_len, batch_size)
+
+            hidden_out = []
+            memory_out = []
+            if hidden:
+                (hx, cx) = hidden
+            else:
+                hx = autograd.Variable(torch.zeros(batch_size, self.hidden_dim))
+                cx = autograd.Variable(torch.zeros(batch_size, self.hidden_dim))
+                if self.gpu:
+                    hx = hx.cuda()
+                    cx = cx.cuda()
+
+            id_list = range(seq_len)
+            if not self.left2right:
+                id_list = list(reversed(id_list))
+            input_c_list = init_list_of_objects(seq_len)
+            for t in id_list:
+                (hx, cx) = self.rnn(input[t], input_c_list[t], (hx, cx))
+                hidden_out.append(hx)
+                memory_out.append(cx)
+                if skip_input[t]:
+                    matched_num = len(skip_input[t][0])
+                    word_var = torch.LongTensor(skip_input[t][0])
+                    if self.gpu:
+                        word_var = word_var.cuda()
+                    word_emb = self.word_emb(word_var)
+                    word_emb = self.word_dropout(word_emb)
+                    ct = self.word_rnn(word_emb, (hx, cx))
+                    assert (ct.size(0) == len(skip_input[t][1]))
+                    for idx in range(matched_num):
+                        length = skip_input[t][1][idx]
+                        if self.left2right:
+                            # if t+length <= seq_len -1:
+                            input_c_list[t + length - 1].append(ct[idx, :].unsqueeze(0))
+                        else:
+                            # if t-length >=0:
+                            input_c_list[t - length + 1].append(ct[idx, :].unsqueeze(0))
+            if not self.left2right:
+                hidden_out = list(reversed(hidden_out))
+                memory_out = list(reversed(memory_out))
+            output_hidden, output_memory = torch.cat(hidden_out, 0), torch.cat(memory_out, 0)
+        return output_hidden.unsqueeze(0), output_memory.unsqueeze(0)
+
     def forward(self, input, skip_input_list, hidden=None):
         """
             input: variable (batch, seq_len), batch = 1
             skip_input_list: [skip_input, volatile_flag]
-            skip_input: three dimension list, with length is seq_len. Each element is a list of matched word id and its length. 
-                        example: [[], [[25,13],[2,3]]] 25/13 is word id, 2,3 is word length . 
+            skip_input: three dimension list, with length is seq_len. Each element is a list of matched word id and its length.
+                        example: [[], [[25,13],[2,3]]] 25/13 is word id, 2,3 is word length .
         """
         volatile_flag = skip_input_list[1]
         skip_input = skip_input_list[0]
@@ -224,8 +311,8 @@ class LatticeLSTM(nn.Module):
         if hidden:
             (hx, cx) = hidden
         else:
-            hx = torch.zeros(batch_size, self.hidden_dim)
-            cx = torch.zeros(batch_size, self.hidden_dim)
+            hx = autograd.Variable(torch.zeros(batch_size, self.hidden_dim))
+            cx = autograd.Variable(torch.zeros(batch_size, self.hidden_dim))
             if self.gpu:
                 hx = hx.cuda()
                 cx = cx.cuda()
@@ -240,10 +327,7 @@ class LatticeLSTM(nn.Module):
             memory_out.append(cx)
             if skip_input[t]:
                 matched_num = len(skip_input[t][0])
-                # with torch.no_grad():
-                #     print 'volatile_flag=', volatile_flag
-                # word_var = autograd.Variable(torch.LongTensor(skip_input[t][0]), volatile=volatile_flag)
-                word_var = torch.LongTensor(skip_input[t][0])
+                word_var = autograd.Variable(torch.LongTensor(skip_input[t][0]), volatile=volatile_flag)
                 if self.gpu:
                     word_var = word_var.cuda()
                 word_emb = self.word_emb(word_var)
@@ -276,7 +360,6 @@ def init_list_of_objects(size):
 
 
 def convert_forward_gaz_to_backward(forward_gaz):
-    # print forward_gaz
     length = len(forward_gaz)
     backward_gaz = init_list_of_objects(length)
     for idx in range(length):

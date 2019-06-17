@@ -4,26 +4,21 @@
 # @Last Modified by:   Jie Yang,     Contact: jieynlp@gmail.com
 # @Last Modified time: 2017-12-06 23:24:42
 import torch
-import torch.autograd as autograd
+import logging
 import torch.nn as nn
-import torch.nn.functional as F
 import numpy as np
 
 
 class CharCNN(nn.Module):
     def __init__(self, alphabet_size, embedding_dim, hidden_dim, dropout, gpu):
         super(CharCNN, self).__init__()
-        print "build batched char cnn..."
+        logging.info("build batched char cnn...")
         self.gpu = gpu
         self.hidden_dim = hidden_dim
-
         self.char_drop = nn.Dropout(dropout)
         self.char_embeddings = nn.Embedding(alphabet_size, embedding_dim)
         self.char_embeddings.weight.data.copy_(torch.from_numpy(self.random_embedding(alphabet_size, embedding_dim)))
-
-        # nn.Conv1d的使用
         self.char_cnn = nn.Conv1d(embedding_dim, self.hidden_dim, kernel_size=3, padding=1)
-
         if self.gpu:
             self.char_drop = self.char_drop.cuda()
             self.char_embeddings = self.char_embeddings.cuda()
@@ -62,12 +57,8 @@ class CharCNN(nn.Module):
             Note it only accepts ordered (length) variable, length size is recorded in seq_lengths
         """
         batch_size = input.size(0)
-        # 假设input是[batch_size, word_length]，char_embeds就是这句话的词向量[batch_size, word_length, embedding_dim]
         char_embeds = self.char_drop(self.char_embeddings(input))
-        # transpose之后，char_embeds变成[batch_size, embedding_dim, word_length]
         char_embeds = char_embeds.transpose(2, 1).contiguous()
-        # char_cnn之后，[batch_size, hidden_dim, word_length-3+1]，
-        # 然后再transpose之后[batch_size, word_length-3+1, hidden_dim]
         char_cnn_out = self.char_cnn(char_embeds).transpose(2, 1).contiguous()
         return char_cnn_out
 

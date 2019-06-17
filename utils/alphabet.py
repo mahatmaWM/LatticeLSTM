@@ -10,6 +10,7 @@ Alphabet maps objects to integer ids. It provides two way mapping from the index
 """
 import json
 import os
+import logging
 
 
 class Alphabet:
@@ -35,7 +36,7 @@ class Alphabet:
         # Index 0 is occupied by default, all else following.
         self.default_index = 0
         self.next_index = 1
-        
+
     def add(self, instance):
         if instance not in self.instance2index:
             self.instances.append(instance)
@@ -60,7 +61,7 @@ class Alphabet:
         try:
             return self.instances[index - 1]
         except IndexError:
-            print('WARNING:Alphabet get_instance ,unknown instance, return the first label.')
+            logging.info('WARNING:Alphabet get_instance ,unknown instance, return the first label.')
             return self.instances[0]
 
     def size(self):
@@ -70,7 +71,7 @@ class Alphabet:
         return len(self.instances) + 1
 
     def iteritems(self):
-        return self.instance2index.iteritems()
+        return self.instance2index.items()
 
     def enumerate_items(self, start=1):
         if start < 1 or start >= self.size():
@@ -101,7 +102,7 @@ class Alphabet:
         try:
             json.dump(self.get_content(), open(os.path.join(output_directory, saving_name + ".json"), 'w'))
         except Exception as e:
-            print("Exception: Alphabet is not saved: " % repr(e))
+            logging.info("Exception: Alphabet is not saved: %s" % repr(e))
 
     def load(self, input_directory, name=None):
         """

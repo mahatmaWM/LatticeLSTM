@@ -1,0 +1,13 @@
+*.py[cod]
+.idea/
+__pycache__
+*.dset
+workspace.xml
+*.model
+*.txt
+sent.*
+*.out
+*.log
+*.emb
+emb
+ner.tvseries
