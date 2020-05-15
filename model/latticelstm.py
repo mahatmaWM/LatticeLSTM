@@ -19,8 +19,10 @@ class WordLSTMCell(nn.Module):
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.use_bias = use_bias
-        self.weight_ih = nn.Parameter(torch.FloatTensor(input_size, 3 * hidden_size))
-        self.weight_hh = nn.Parameter(torch.FloatTensor(hidden_size, 3 * hidden_size))
+        self.weight_ih = nn.Parameter(
+            torch.FloatTensor(input_size, 3 * hidden_size))
+        self.weight_hh = nn.Parameter(
+            torch.FloatTensor(hidden_size, 3 * hidden_size))
         if use_bias:
             self.bias = nn.Parameter(torch.FloatTensor(3 * hidden_size))
         else:
@@ -53,7 +55,8 @@ class WordLSTMCell(nn.Module):
         # 对应论文公式13
         h_0, c_0 = hx
         batch_size = h_0.size(0)
-        bias_batch = (self.bias.unsqueeze(0).expand(batch_size, *self.bias.size()))
+        bias_batch = (self.bias.unsqueeze(0).expand(batch_size,
+                                                    *self.bias.size()))
         wh_b = torch.addmm(bias_batch, h_0, self.weight_hh)
         wi = torch.mm(input_, self.weight_ih)
         f, i, g = torch.split(wh_b + wi, self.hidden_size, dim=1)
@@ -77,10 +80,14 @@ class MultiInputLSTMCell(nn.Module):
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.use_bias = use_bias
-        self.weight_ih = nn.Parameter(torch.FloatTensor(input_size, 3 * hidden_size))
-        self.weight_hh = nn.Parameter(torch.FloatTensor(hidden_size, 3 * hidden_size))
-        self.alpha_weight_ih = nn.Parameter(torch.FloatTensor(input_size, hidden_size))
-        self.alpha_weight_hh = nn.Parameter(torch.FloatTensor(hidden_size, hidden_size))
+        self.weight_ih = nn.Parameter(
+            torch.FloatTensor(input_size, 3 * hidden_size))
+        self.weight_hh = nn.Parameter(
+            torch.FloatTensor(hidden_size, 3 * hidden_size))
+        self.alpha_weight_ih = nn.Parameter(
+            torch.FloatTensor(input_size, hidden_size))
+        self.alpha_weight_hh = nn.Parameter(
+            torch.FloatTensor(hidden_size, hidden_size))
         if use_bias:
             self.bias = nn.Parameter(torch.FloatTensor(3 * hidden_size))
             self.alpha_bias = nn.Parameter(torch.FloatTensor(hidden_size))
@@ -126,7 +133,8 @@ class MultiInputLSTMCell(nn.Module):
         h_0, c_0 = hx
         batch_size = h_0.size(0)
         assert (batch_size == 1)
-        bias_batch = (self.bias.unsqueeze(0).expand(batch_size, *self.bias.size()))
+        bias_batch = (self.bias.unsqueeze(0).expand(batch_size,
+                                                    *self.bias.size()))
         wh_b = torch.addmm(bias_batch, h_0, self.weight_hh)
         wi = torch.mm(input_, self.weight_ih)
         i, o, g = torch.split(wh_b + wi, self.hidden_size, dim=1)
@@ -140,9 +148,12 @@ class MultiInputLSTMCell(nn.Module):
             h_1 = o * torch.tanh(c_1)
         else:
             c_input_var = torch.cat(c_input, 0)
-            alpha_bias_batch = (self.alpha_bias.unsqueeze(0).expand(batch_size, *self.alpha_bias.size()))
+            alpha_bias_batch = (self.alpha_bias.unsqueeze(0).expand(
+                batch_size, *self.alpha_bias.size()))
             c_input_var = c_input_var.squeeze(1)  # (c_num, hidden_dim)
-            alpha_wi = torch.addmm(self.alpha_bias, input_, self.alpha_weight_ih).expand(c_num, self.hidden_size)
+            alpha_wi = torch.addmm(self.alpha_bias, input_,
+                                   self.alpha_weight_ih).expand(
+                                       c_num, self.hidden_size)
             alpha_wh = torch.mm(c_input_var, self.alpha_weight_hh)
             alpha = torch.sigmoid(alpha_wi + alpha_wh)
             # alpha  = i concat alpha
@@ -164,19 +175,33 @@ class MultiInputLSTMCell(nn.Module):
 class LatticeLSTM(nn.Module):
     """A module that runs multiple steps of LSTM."""
 
-    def __init__(self, input_dim, hidden_dim, word_drop, word_alphabet_size, word_emb_dim, pretrain_word_emb=None,
-                 left2right=True, fix_word_emb=True, gpu=True, use_bias=True):
+    def __init__(self,
+                 input_dim,
+                 hidden_dim,
+                 word_drop,
+                 word_alphabet_size,
+                 word_emb_dim,
+                 pretrain_word_emb=None,
+                 left2right=True,
+                 fix_word_emb=True,
+                 gpu=True,
+                 use_bias=True):
         super(LatticeLSTM, self).__init__()
         skip_direction = "forward" if left2right else "backward"
-        logging.info("build LatticeLSTM:%s, Fix emb:%s, gaz drop:%s", skip_direction, fix_word_emb, word_drop)
+        logging.info("build LatticeLSTM:%s, Fix emb:%s, gaz drop:%s",
+                     skip_direction, fix_word_emb, word_drop)
         self.gpu = gpu
         self.hidden_dim = hidden_dim
         self.word_emb = nn.Embedding(word_alphabet_size, word_emb_dim)
         if pretrain_word_emb is not None:
-            logging.info("load pre-train word emb: %s", pretrain_word_emb.shape)
-            self.word_emb.weight.data.copy_(torch.from_numpy(pretrain_word_emb))
+            logging.info("load pre-train word emb: %s",
+                         pretrain_word_emb.shape)
+            self.word_emb.weight.data.copy_(
+                torch.from_numpy(pretrain_word_emb))
         else:
-            self.word_emb.weight.data.copy_(torch.from_numpy(self.random_embedding(word_alphabet_size, word_emb_dim)))
+            self.word_emb.weight.data.copy_(
+                torch.from_numpy(
+                    self.random_embedding(word_alphabet_size, word_emb_dim)))
 
         if fix_word_emb:
             self.word_emb.weight.requires_grad = False
@@ -194,7 +219,8 @@ class LatticeLSTM(nn.Module):
         pretrain_emb = np.empty([vocab_size, embedding_dim])
         scale = np.sqrt(3.0 / embedding_dim)
         for index in range(vocab_size):
-            pretrain_emb[index, :] = np.random.uniform(-scale, scale, [1, embedding_dim])
+            pretrain_emb[index, :] = np.random.uniform(-scale, scale,
+                                                       [1, embedding_dim])
         return pretrain_emb
 
     # input = tensor([[[-0.2966, 0.0000, 0.2534, ..., 0.3673, -0.3800, -0.0000],
@@ -227,7 +253,8 @@ class LatticeLSTM(nn.Module):
                     Each element is a list of matched word id and its length.
                     example: [[], [[25,13],[2,3]]] 25/13 is word id, 2,3 is word length .
         """
-        logging.info('input=%s, skip_input_list=%s', input_tensors, skip_input_list)
+        logging.info('input=%s, skip_input_list=%s', input_tensors,
+                     skip_input_list)
         volatile_flag = skip_input_list[-1]
         skip_input_list = skip_input_list[0:-1]
         # logging.info('skip_input_list=%s', skip_input_list)
@@ -254,8 +281,8 @@ class LatticeLSTM(nn.Module):
             if hidden:
                 (hx, cx) = hidden
             else:
-                hx = autograd.Variable(torch.zeros(batch_size, self.hidden_dim))
-                cx = autograd.Variable(torch.zeros(batch_size, self.hidden_dim))
+                hx = torch.zeros(batch_size, self.hidden_dim)
+                cx = torch.zeros(batch_size, self.hidden_dim)
                 if self.gpu:
                     hx = hx.cuda()
                     cx = cx.cuda()
@@ -281,14 +308,17 @@ class LatticeLSTM(nn.Module):
                         length = skip_input[t][1][idx]
                         if self.left2right:
                             # if t+length <= seq_len -1:
-                            input_c_list[t + length - 1].append(ct[idx, :].unsqueeze(0))
+                            input_c_list[t + length - 1].append(
+                                ct[idx, :].unsqueeze(0))
                         else:
                             # if t-length >=0:
-                            input_c_list[t - length + 1].append(ct[idx, :].unsqueeze(0))
+                            input_c_list[t - length + 1].append(
+                                ct[idx, :].unsqueeze(0))
             if not self.left2right:
                 hidden_out = list(reversed(hidden_out))
                 memory_out = list(reversed(memory_out))
-            output_hidden, output_memory = torch.cat(hidden_out, 0), torch.cat(memory_out, 0)
+            output_hidden, output_memory = torch.cat(hidden_out, 0), torch.cat(
+                memory_out, 0)
         return output_hidden.unsqueeze(0), output_memory.unsqueeze(0)
 
     def forward(self, input, skip_input_list, hidden=None):
@@ -327,7 +357,8 @@ class LatticeLSTM(nn.Module):
             memory_out.append(cx)
             if skip_input[t]:
                 matched_num = len(skip_input[t][0])
-                word_var = autograd.Variable(torch.LongTensor(skip_input[t][0]), volatile=volatile_flag)
+                word_var = autograd.Variable(
+                    torch.LongTensor(skip_input[t][0]), volatile=volatile_flag)
                 if self.gpu:
                     word_var = word_var.cuda()
                 word_emb = self.word_emb(word_var)
@@ -338,15 +369,18 @@ class LatticeLSTM(nn.Module):
                     length = skip_input[t][1][idx]
                     if self.left2right:
                         # if t+length <= seq_len -1:
-                        input_c_list[t + length - 1].append(ct[idx, :].unsqueeze(0))
+                        input_c_list[t + length - 1].append(
+                            ct[idx, :].unsqueeze(0))
                     else:
                         # if t-length >=0:
-                        input_c_list[t - length + 1].append(ct[idx, :].unsqueeze(0))
+                        input_c_list[t - length + 1].append(
+                            ct[idx, :].unsqueeze(0))
                 # print len(a)
         if not self.left2right:
             hidden_out = list(reversed(hidden_out))
             memory_out = list(reversed(memory_out))
-        output_hidden, output_memory = torch.cat(hidden_out, 0), torch.cat(memory_out, 0)
+        output_hidden, output_memory = torch.cat(hidden_out, 0), torch.cat(
+            memory_out, 0)
         # (batch, seq_len, hidden_dim)
         # print output_hidden.size()
         return output_hidden.unsqueeze(0), output_memory.unsqueeze(0)

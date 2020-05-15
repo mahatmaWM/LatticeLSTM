@@ -59,7 +59,8 @@ def predict_check(pred_variable, gold_variable, mask_variable):
     return right_token, total_token
 
 
-def recover_label(pred_variable, gold_variable, mask_variable, label_alphabet, word_recover):
+def recover_label(pred_variable, gold_variable, mask_variable, label_alphabet,
+                  word_recover):
     """
         input:
             pred_variable (batch_size, sent_len): pred tag result
@@ -79,8 +80,14 @@ def recover_label(pred_variable, gold_variable, mask_variable, label_alphabet, w
     pred_label = []
     gold_label = []
     for idx in range(batch_size):
-        pred = [label_alphabet.get_instance(pred_tag[idx][idy]) for idy in range(seq_len) if mask[idx][idy] != 0]
-        gold = [label_alphabet.get_instance(gold_tag[idx][idy]) for idy in range(seq_len) if mask[idx][idy] != 0]
+        pred = [
+            label_alphabet.get_instance(pred_tag[idx][idy])
+            for idy in range(seq_len) if mask[idx][idy] != 0
+        ]
+        gold = [
+            label_alphabet.get_instance(gold_tag[idx][idy])
+            for idy in range(seq_len) if mask[idx][idy] != 0
+        ]
         # logging.info("pred=%s, pred_tag=%s", pred, pred_tag.tolist()
         # logging.info("gold=%s, gold_tag=%s", gold, gold_tag.tolist()
         assert (len(pred) == len(gold))
@@ -116,7 +123,7 @@ def load_data_setting(save_file):
 
 
 def lr_decay(optimizer, epoch, decay_rate, init_lr):
-    lr = init_lr * ((1 - decay_rate) ** epoch)
+    lr = init_lr * ((1 - decay_rate)**epoch)
     logging.info(" Learning rate is setted as: %s", lr)
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
@@ -154,9 +161,10 @@ def evaluate(data, model, name):
             continue
         gaz_list, batch_word, batch_biword, batch_wordlen, batch_wordrecover, batch_char, batch_charlen, \
         batch_charrecover, batch_label, mask = batchify_with_label(instance, data.HP_gpu, True)
-        tag_seq = model(gaz_list, batch_word, batch_biword, batch_wordlen, batch_char, batch_charlen, batch_charrecover,
-                        mask)
-        pred_label, gold_label = recover_label(tag_seq, batch_label, mask, data.label_alphabet, batch_wordrecover)
+        tag_seq = model(gaz_list, batch_word, batch_biword, batch_wordlen,
+                        batch_char, batch_charlen, batch_charrecover, mask)
+        pred_label, gold_label = recover_label(
+            tag_seq, batch_label, mask, data.label_alphabet, batch_wordrecover)
         pred_results += pred_label
         gold_results += gold_label
     decode_time = time.time() - start_time
@@ -189,11 +197,16 @@ def batchify_with_label(input_batch_list, gpu, volatile_flag=False):
     # 获取每句话的word序列，以及最长的句子长度，做相应的padding操作
     word_seq_lengths = torch.LongTensor(list(map(len, words)))
     max_seq_len = word_seq_lengths.max().item()
-    word_seq_tensor = torch.zeros((batch_size, max_seq_len), requires_grad=volatile_flag).long()
-    biword_seq_tensor = torch.zeros((batch_size, max_seq_len), requires_grad=volatile_flag).long()
-    label_seq_tensor = torch.zeros((batch_size, max_seq_len), requires_grad=volatile_flag).long()
-    mask = torch.zeros((batch_size, max_seq_len), requires_grad=volatile_flag).byte()
-    for idx, (seq, biseq, label, seqlen) in enumerate(zip(words, biwords, labels, word_seq_lengths)):
+    word_seq_tensor = torch.zeros((batch_size, max_seq_len),
+                                  requires_grad=volatile_flag).long()
+    biword_seq_tensor = torch.zeros((batch_size, max_seq_len),
+                                    requires_grad=volatile_flag).long()
+    label_seq_tensor = torch.zeros((batch_size, max_seq_len),
+                                   requires_grad=volatile_flag).long()
+    mask = torch.zeros((batch_size, max_seq_len),
+                       requires_grad=volatile_flag).byte()
+    for idx, (seq, biseq, label, seqlen) in enumerate(
+            zip(words, biwords, labels, word_seq_lengths)):
         seqlen = seqlen.item()
         word_seq_tensor[idx, :seqlen] = torch.LongTensor(seq)
         biword_seq_tensor[idx, :seqlen] = torch.LongTensor(biseq)
@@ -208,16 +221,22 @@ def batchify_with_label(input_batch_list, gpu, volatile_flag=False):
     mask = mask[word_perm_idx]
     # deal with char
     # pad_chars (batch_size, max_seq_len)
-    pad_chars = [chars[idx] + [[0]] * (max_seq_len - len(chars[idx])) for idx in range(len(chars))]
+    pad_chars = [
+        chars[idx] + [[0]] * (max_seq_len - len(chars[idx]))
+        for idx in range(len(chars))
+    ]
     length_list = [list(map(len, pad_char)) for pad_char in pad_chars]
     max_word_len = max(map(max, length_list))
-    char_seq_tensor = torch.zeros((batch_size, max_seq_len, max_word_len), requires_grad=volatile_flag).long()
+    char_seq_tensor = torch.zeros((batch_size, max_seq_len, max_word_len),
+                                  requires_grad=volatile_flag).long()
     char_seq_lengths = torch.LongTensor(length_list)
     for idx, (seq, seqlen) in enumerate(zip(pad_chars, char_seq_lengths)):
         for idy, (word, wordlen) in enumerate(zip(seq, seqlen)):
             char_seq_tensor[idx, idy, :wordlen] = torch.LongTensor(word)
-    char_seq_tensor = char_seq_tensor[word_perm_idx].view(batch_size * max_seq_len, -1)
-    char_seq_lengths = char_seq_lengths[word_perm_idx].view(batch_size * max_seq_len, )
+    char_seq_tensor = char_seq_tensor[word_perm_idx].view(
+        batch_size * max_seq_len, -1)
+    char_seq_lengths = char_seq_lengths[word_perm_idx].view(
+        batch_size * max_seq_len, )
     char_seq_lengths, char_perm_idx = char_seq_lengths.sort(0, descending=True)
     char_seq_tensor = char_seq_tensor[char_perm_idx]
     _, char_seq_recover = char_perm_idx.sort(0, descending=False)
@@ -281,6 +300,7 @@ def train(data, save_model_dir, seg=True):
                 continue
             gaz_list, batch_word, batch_biword, batch_wordlen, batch_wordrecover, batch_char, \
             batch_charlen, batch_charrecover, batch_label, mask = batchify_with_label(instance, data.HP_gpu)
+            # 打印一个样本例子
             if idx == 0 and batch_id == 0:
                 logging.info('instance=%s', instance)
                 logging.info('gaz_list=%s', gaz_list)
@@ -295,8 +315,9 @@ def train(data, save_model_dir, seg=True):
                 logging.info('mask=%s', mask)
 
             instance_count += 1
-            loss, tag_seq = model.neg_log_likelihood_loss(gaz_list, batch_word, batch_biword, batch_wordlen, batch_char,
-                                                          batch_charlen, batch_charrecover, batch_label, mask)
+            loss, tag_seq = model.neg_log_likelihood_loss(
+                gaz_list, batch_word, batch_biword, batch_wordlen, batch_char,
+                batch_charlen, batch_charrecover, batch_label, mask)
             right, whole = predict_check(tag_seq, batch_label, mask)
             right_token += right
             whole_token += whole
@@ -308,8 +329,10 @@ def train(data, save_model_dir, seg=True):
                 temp_time = time.time()
                 temp_cost = temp_time - temp_start
                 temp_start = temp_time
-                logging.info("     Instance: %s; Time: %.2fs; loss: %.4f; acc: %s/%s=%.4f" % (
-                    end, temp_cost, sample_loss, right_token, whole_token, (right_token + 0.) / whole_token))
+                logging.info(
+                    "     Instance: %s; Time: %.2fs; loss: %.4f; acc: %s/%s=%.4f"
+                    % (end, temp_cost, sample_loss, right_token, whole_token,
+                       (right_token + 0.) / whole_token))
                 sys.stdout.flush()
                 sample_loss = 0
             if end % data.HP_batch_size == 0:
@@ -319,23 +342,28 @@ def train(data, save_model_dir, seg=True):
                 batch_loss = 0
         temp_time = time.time()
         temp_cost = temp_time - temp_start
-        logging.info("     Instance: %s; Time: %.2fs; loss: %.4f; acc: %s/%s=%.4f" % (
-            end, temp_cost, sample_loss, right_token, whole_token, (right_token + 0.) / whole_token))
+        logging.info(
+            "     Instance: %s; Time: %.2fs; loss: %.4f; acc: %s/%s=%.4f" %
+            (end, temp_cost, sample_loss, right_token, whole_token,
+             (right_token + 0.) / whole_token))
         epoch_finish = time.time()
         epoch_cost = epoch_finish - epoch_start
-        logging.info("Epoch: %s training finished. Time: %.2fs, speed: %.2fst/s,  total loss: %s" % (
-            idx, epoch_cost, train_num / epoch_cost, total_loss))
+        logging.info(
+            "Epoch: %s training finished. Time: %.2fs, speed: %.2fst/s,  total loss: %s"
+            % (idx, epoch_cost, train_num / epoch_cost, total_loss))
         speed, acc, p, r, f, _ = evaluate(data, model, "dev")
         dev_finish = time.time()
         dev_cost = dev_finish - epoch_finish
 
         if seg:
             current_score = f
-            logging.info("Dev: time: %.2fs, speed: %.2fst/s; acc: %.4f, p: %.4f, r: %.4f, f: %.4f" % (
-                dev_cost, speed, acc, p, r, f))
+            logging.info(
+                "Dev: time: %.2fs, speed: %.2fst/s; acc: %.4f, p: %.4f, r: %.4f, f: %.4f"
+                % (dev_cost, speed, acc, p, r, f))
         else:
             current_score = acc
-            logging.info("Dev: time: %.2fs speed: %.2fst/s; acc: %.4f" % (dev_cost, speed, acc))
+            logging.info("Dev: time: %.2fs speed: %.2fst/s; acc: %.4f" %
+                         (dev_cost, speed, acc))
 
         if current_score > best_dev:
             if seg:
@@ -350,10 +378,12 @@ def train(data, save_model_dir, seg=True):
         test_finish = time.time()
         test_cost = test_finish - dev_finish
         if seg:
-            logging.info("Test: time: %.2fs, speed: %.2fst/s; acc: %.4f, p: %.4f, r: %.4f, f: %.4f" % (
-                test_cost, speed, acc, p, r, f))
+            logging.info(
+                "Test: time: %.2fs, speed: %.2fst/s; acc: %.4f, p: %.4f, r: %.4f, f: %.4f"
+                % (test_cost, speed, acc, p, r, f))
         else:
-            logging.info("Test: time: %.2fs, speed: %.2fst/s; acc: %.4f" % (test_cost, speed, acc))
+            logging.info("Test: time: %.2fs, speed: %.2fst/s; acc: %.4f" %
+                         (test_cost, speed, acc))
         gc.collect()
 
 
@@ -375,20 +405,32 @@ def load_model_decode(model_dir, data, name, gpu, seg=True):
     end_time = time.time()
     time_cost = end_time - start_time
     if seg:
-        logging.info("%s: time:%.2fs, speed:%.2fst/s; acc: %.4f, p: %.4f, r: %.4f, f: %.4f" % (
-            name, time_cost, speed, acc, p, r, f))
+        logging.info(
+            "%s: time:%.2fs, speed:%.2fst/s; acc: %.4f, p: %.4f, r: %.4f, f: %.4f"
+            % (name, time_cost, speed, acc, p, r, f))
     else:
-        logging.info("%s: time:%.2fs, speed:%.2fst/s; acc: %.4f" % (name, time_cost, speed, acc))
+        logging.info("%s: time:%.2fs, speed:%.2fst/s; acc: %.4f" %
+                     (name, time_cost, speed, acc))
     return pred_results
 
 
 if __name__ == '__main__':
     configure_logging()
-    parser = argparse.ArgumentParser(description='Tuning with bi-directional LSTM-CRF')
-    parser.add_argument('--embedding', help='Embedding for words', default='None')
-    parser.add_argument('--status', choices=['train', 'test', 'decode'], help='update algorithm', default='train')
-    parser.add_argument('--savemodel', default="data/model/saved_model.lstmcrf.")
-    parser.add_argument('--savedset', help='Dir of saved data setting', default="data/save.dset")
+    parser = argparse.ArgumentParser(
+        description='Tuning with bi-directional LSTM-CRF')
+    parser.add_argument(
+        '--embedding', help='Embedding for words', default='None')
+    parser.add_argument(
+        '--status',
+        choices=['train', 'test', 'decode'],
+        help='update algorithm',
+        default='train')
+    parser.add_argument(
+        '--savemodel', default="data/model/saved_model.lstmcrf.")
+    parser.add_argument(
+        '--savedset',
+        help='Dir of saved data setting',
+        default="data/save.dset")
     parser.add_argument('--train', default="data/conll03/train.bmes")
     parser.add_argument('--dev', default="data/conll03/dev.bmes")
     parser.add_argument('--test', default="data/conll03/test.bmes")
@@ -469,4 +511,6 @@ if __name__ == '__main__':
         decode_results = load_model_decode(model_dir, data, 'raw', gpu, seg)
         data.write_decoded_results(output_file, decode_results, 'raw')
     else:
-        logging.info("Invalid argument! Please use valid arguments! (train/test/decode)")
+        logging.info(
+            "Invalid argument! Please use valid arguments! (train/test/decode)"
+        )

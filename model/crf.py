@@ -24,7 +24,8 @@ def log_sum_exp(vec, m_size):
         batch_size, hidden_dim
     """
     _, idx = torch.max(vec, 1)  # B * 1 * M
-    max_score = torch.gather(vec, 1, idx.view(-1, 1, m_size)).view(-1, 1, m_size)  # B * M
+    max_score = torch.gather(vec, 1, idx.view(-1, 1, m_size)).view(
+        -1, 1, m_size)  # B * M
     return max_score.view(-1, m_size) + \
            torch.log(torch.sum(torch.exp(vec - max_score.expand_as(vec)), 1)).view(-1, m_size)  # B * M
 
@@ -45,7 +46,8 @@ class CRF(nn.Module):
 
         # We add 2 here, because of START_TAG and STOP_TAG
         # transitions (f_tag_size, t_tag_size), transition value from f_tag to t_tag
-        init_transitions = torch.zeros(self.tagset_size + 2, self.tagset_size + 2)
+        init_transitions = torch.zeros(self.tagset_size + 2,
+                                       self.tagset_size + 2)
         init_transitions[:, START_TAG] = -10000.0
         init_transitions[STOP_TAG, :] = -10000.0
         init_transitions[:, 0] = -10000.0
@@ -78,19 +80,23 @@ class CRF(nn.Module):
         # (seq_len, batch, self.tag_size) =>
         # (ins_num, 1, tag_size) =>
         # (ins_num, tag_size, tag_size)
-        feats = feats.transpose(1, 0).contiguous().view(ins_num, 1, tag_size).expand(ins_num, tag_size, tag_size)
+        feats = feats.transpose(1, 0).contiguous().view(
+            ins_num, 1, tag_size).expand(ins_num, tag_size, tag_size)
 
         # need to consider start
-        scores = feats + self.transitions.view(1, tag_size, tag_size).expand(ins_num, tag_size, tag_size)
+        scores = feats + self.transitions.view(1, tag_size, tag_size).expand(
+            ins_num, tag_size, tag_size)
         scores = scores.view(seq_len, batch_size, tag_size, tag_size)
 
         # build iter
         # 这里seq_iter迭代完就是完成一个句子的计算，（里面每次处理都是batch-size个一起处理，迭代完seq_iter就把batch内的全部算了）
         seq_iter = enumerate(scores)
-        _, inivalues = next(seq_iter)  # bat_size * from_target_size * to_target_size
+        _, inivalues = next(
+            seq_iter)  # bat_size * from_target_size * to_target_size
 
         # only need start from start_tag
-        partition = inivalues[:, START_TAG, :].clone().view(batch_size, tag_size, 1)  # bat_size * to_target_size
+        partition = inivalues[:, START_TAG, :].clone().view(
+            batch_size, tag_size, 1)  # bat_size * to_target_size
 
         # add start score (from start to all tag, duplicate to batch_size)
         # partition = partition + self.transitions[START_TAG,:].view(1, tag_size, 1).expand(batch_size, tag_size, 1)
@@ -106,7 +112,8 @@ class CRF(nn.Module):
 
             # 哪些token需要被mask起来
             # (bat_size * from_target * to_target) -> (bat_size * to_target)
-            mask_idx = mask[idx, :].view(batch_size, 1).expand(batch_size, tag_size)
+            mask_idx = mask[idx, :].view(batch_size, 1).expand(
+                batch_size, tag_size)
 
             # effective updated partition part, only keep the partition value of mask value = 1
             masked_cur_partition = cur_partition.masked_select(mask_idx)
@@ -147,10 +154,12 @@ class CRF(nn.Module):
         ins_num = seq_len * batch_size
 
         # be careful the view shape, it is .view(ins_num, 1, tag_size) but not .view(ins_num, tag_size, 1)
-        feats = feats.transpose(1, 0).contiguous().view(ins_num, 1, tag_size).expand(ins_num, tag_size, tag_size)
+        feats = feats.transpose(1, 0).contiguous().view(
+            ins_num, 1, tag_size).expand(ins_num, tag_size, tag_size)
 
         # need to consider start
-        scores = feats + self.transitions.view(1, tag_size, tag_size).expand(ins_num, tag_size, tag_size)
+        scores = feats + self.transitions.view(1, tag_size, tag_size).expand(
+            ins_num, tag_size, tag_size)
         scores = scores.view(seq_len, batch_size, tag_size, tag_size)
 
         # record the position of best score
@@ -161,10 +170,12 @@ class CRF(nn.Module):
 
         # build iter
         seq_iter = enumerate(scores)
-        _, inivalues = next(seq_iter)  # bat_size * from_target_size * to_target_size
+        _, inivalues = next(
+            seq_iter)  # bat_size * from_target_size * to_target_size
 
         # only need start from start_tag
-        partition = inivalues[:, START_TAG, :].clone().view(batch_size, tag_size)  # bat_size * to_target_size
+        partition = inivalues[:, START_TAG, :].clone().view(
+            batch_size, tag_size)  # bat_size * to_target_size
         partition_history.append(partition)
 
         # iter over last scores
@@ -180,16 +191,21 @@ class CRF(nn.Module):
 
             # cur_bp: (batch_size, tag_size) max source score position in current tag
             # set padded label as 0, which will be filtered in post processing
-            cur_bp.masked_fill_(mask[idx].view(batch_size, 1).expand(batch_size, tag_size), 0)
+            cur_bp.masked_fill_(
+                mask[idx].view(batch_size, 1).expand(batch_size, tag_size), 0)
             back_points.append(cur_bp)
 
         # add score to final STOP_TAG
         # (batch_size, seq_len. tag_size)
-        partition_history = torch.cat(partition_history, 0).view(seq_len, batch_size, -1).transpose(1, 0).contiguous()
+        partition_history = torch.cat(partition_history, 0).view(
+            seq_len, batch_size, -1).transpose(1, 0).contiguous()
 
         # get the last position for each setences, and select the last partitions using gather()
-        last_position = length_mask.view(batch_size, 1, 1).expand(batch_size, 1, tag_size) - 1
-        last_partition = torch.gather(partition_history, 1, last_position).view(batch_size, tag_size, 1)
+        last_position = length_mask.view(batch_size, 1, 1).expand(
+            batch_size, 1, tag_size) - 1
+        last_partition = torch.gather(partition_history, 1,
+                                      last_position).view(
+                                          batch_size, tag_size, 1)
 
         # calculate the score from last partition to end state (and then select the STOP_TAG from it)
         last_values = last_partition.expand(batch_size, tag_size, tag_size) + \
@@ -200,11 +216,13 @@ class CRF(nn.Module):
         if self.gpu:
             pad_zero = pad_zero.cuda()
         back_points.append(pad_zero)
-        back_points = torch.cat(back_points).view(seq_len, batch_size, tag_size)
+        back_points = torch.cat(back_points).view(seq_len, batch_size,
+                                                  tag_size)
 
         # select end ids in STOP_TAG
         pointer = last_bp[:, STOP_TAG]
-        insert_last = pointer.contiguous().view(batch_size, 1, 1).expand(batch_size, 1, tag_size)
+        insert_last = pointer.contiguous().view(batch_size, 1, 1).expand(
+            batch_size, 1, tag_size)
         back_points = back_points.transpose(1, 0).contiguous()
         # move the end ids(expand to tag_size) to the corresponding position of back_points to replace the 0 values
 
@@ -217,7 +235,8 @@ class CRF(nn.Module):
             decode_idx = decode_idx.cuda()
         decode_idx[-1] = pointer.detach()
         for idx in range(len(back_points) - 2, -1, -1):
-            pointer = torch.gather(back_points[idx], 1, pointer.contiguous().view(batch_size, 1))
+            pointer = torch.gather(back_points[idx], 1,
+                                   pointer.contiguous().view(batch_size, 1))
             decode_idx[idx] = pointer.detach().view(batch_size)
         path_score = None
         decode_idx = decode_idx.transpose(1, 0)
@@ -253,7 +272,8 @@ class CRF(nn.Module):
                 new_tags[:, idx] = tags[:, idx - 1] * tag_size + tags[:, idx]
 
         # transition for label to STOP_TAG
-        end_transition = self.transitions[:, STOP_TAG].contiguous().view(1, tag_size).expand(batch_size, tag_size)
+        end_transition = self.transitions[:, STOP_TAG].contiguous().view(
+            1, tag_size).expand(batch_size, tag_size)
         # length for batch,  last word position = length - 1
         length_mask = torch.sum(mask.long(), dim=1).view(batch_size, 1).long()
         # index the label id of last word
@@ -263,10 +283,13 @@ class CRF(nn.Module):
         end_energy = torch.gather(end_transition, 1, end_ids)
 
         # convert tag as (seq_len, batch_size, 1)
-        new_tags = new_tags.transpose(1, 0).contiguous().view(seq_len, batch_size, 1)
+        new_tags = new_tags.transpose(1, 0).contiguous().view(
+            seq_len, batch_size, 1)
         # need convert tags id to search from 400 positions of scores
         # seq_len * bat_size
-        tg_energy = torch.gather(scores.view(seq_len, batch_size, -1), 2, new_tags).view(seq_len, batch_size)
+        tg_energy = torch.gather(
+            scores.view(seq_len, batch_size, -1), 2, new_tags).view(
+                seq_len, batch_size)
         # mask transpose to (seq_len, batch_size)
         tg_energy = tg_energy.masked_select(mask.transpose(1, 0))
 
@@ -312,9 +335,11 @@ class CRF(nn.Module):
         mask = mask.transpose(1, 0).contiguous()
         ins_num = seq_len * batch_size
         # be careful the view shape, it is .view(ins_num, 1, tag_size) but not .view(ins_num, tag_size, 1)
-        feats = feats.transpose(1, 0).contiguous().view(ins_num, 1, tag_size).expand(ins_num, tag_size, tag_size)
+        feats = feats.transpose(1, 0).contiguous().view(
+            ins_num, 1, tag_size).expand(ins_num, tag_size, tag_size)
         # need to consider start
-        scores = feats + self.transitions.view(1, tag_size, tag_size).expand(ins_num, tag_size, tag_size)
+        scores = feats + self.transitions.view(1, tag_size, tag_size).expand(
+            ins_num, tag_size, tag_size)
         scores = scores.view(seq_len, batch_size, tag_size, tag_size)
 
         # record the position of best score
@@ -326,11 +351,15 @@ class CRF(nn.Module):
 
         # build iter
         seq_iter = enumerate(scores)
-        _, inivalues = next(seq_iter)  # bat_size * from_target_size * to_target_size
+        _, inivalues = next(
+            seq_iter)  # bat_size * from_target_size * to_target_size
         # only need start from start_tag
-        partition = inivalues[:, START_TAG, :].clone()  # bat_size * to_target_size
+        partition = inivalues[:, START_TAG, :].clone(
+        )  # bat_size * to_target_size
         # initial partition [batch_size, tag_size]
-        partition_history.append(partition.view(batch_size, tag_size, 1).expand(batch_size, tag_size, nbest))
+        partition_history.append(
+            partition.view(batch_size, tag_size, 1).expand(
+                batch_size, tag_size, nbest))
         # iter over last scores
         for idx, cur_values in seq_iter:
             if idx == 1:
@@ -345,7 +374,8 @@ class CRF(nn.Module):
                              partition.contiguous().view(batch_size, tag_size, nbest, 1).expand(batch_size, tag_size,
                                                                                                 nbest, tag_size)
                 # compare all nbest and all from target
-                cur_values = cur_values.view(batch_size, tag_size * nbest, tag_size)
+                cur_values = cur_values.view(batch_size, tag_size * nbest,
+                                             tag_size)
             partition, cur_bp = torch.topk(cur_values, nbest, 1)
             # cur_bp/partition: [batch_size, nbest, tag_size], id should be normize through nbest in following backtrace step
             if idx == 1:
@@ -360,16 +390,21 @@ class CRF(nn.Module):
             # cur_bp: (batch_size,nbest, tag_size) topn source score position in current tag
             # set padded label as 0, which will be filtered in post processing
             # mask[idx] ? mask[idx-1]
-            cur_bp.masked_fill_(mask[idx].view(batch_size, 1, 1).expand(batch_size, tag_size, nbest), 0)
+            cur_bp.masked_fill_(
+                mask[idx].view(batch_size, 1, 1).expand(
+                    batch_size, tag_size, nbest), 0)
             back_points.append(cur_bp)
         # add score to final STOP_TAG
         # (batch_size, seq_len, nbest, tag_size)
-        partition_history = torch.cat(partition_history, 0).view(seq_len, batch_size, tag_size, nbest).transpose(1,
-                                                                                                                 0).contiguous()
+        partition_history = torch.cat(partition_history, 0).view(
+            seq_len, batch_size, tag_size, nbest).transpose(1, 0).contiguous()
 
         # get the last position for each setences, and select the last partitions using gather()
-        last_position = length_mask.view(batch_size, 1, 1, 1).expand(batch_size, 1, tag_size, nbest) - 1
-        last_partition = torch.gather(partition_history, 1, last_position).view(batch_size, tag_size, nbest, 1)
+        last_position = length_mask.view(batch_size, 1, 1, 1).expand(
+            batch_size, 1, tag_size, nbest) - 1
+        last_partition = torch.gather(partition_history, 1,
+                                      last_position).view(
+                                          batch_size, tag_size, nbest, 1)
 
         # calculate the score from last partition to end state (and then select the STOP_TAG from it)
         last_values = last_partition.expand(batch_size, tag_size, nbest, tag_size) + \
@@ -379,15 +414,18 @@ class CRF(nn.Module):
         # end_partition: (batch, nbest, tag_size)
         end_bp = end_bp.transpose(2, 1)
         # end_bp: (batch, tag_size, nbest)
-        pad_zero = autograd.Variable(torch.zeros(batch_size, tag_size, nbest)).long()
+        pad_zero = autograd.Variable(torch.zeros(batch_size, tag_size,
+                                                 nbest)).long()
         if self.gpu:
             pad_zero = pad_zero.cuda()
         back_points.append(pad_zero)
-        back_points = torch.cat(back_points).view(seq_len, batch_size, tag_size, nbest)
+        back_points = torch.cat(back_points).view(seq_len, batch_size,
+                                                  tag_size, nbest)
 
         # select end ids in STOP_TAG
         pointer = end_bp[:, STOP_TAG, :]  # (batch_size, nbest)
-        insert_last = pointer.contiguous().view(batch_size, 1, 1, nbest).expand(batch_size, 1, tag_size, nbest)
+        insert_last = pointer.contiguous().view(
+            batch_size, 1, 1, nbest).expand(batch_size, 1, tag_size, nbest)
         back_points = back_points.transpose(1, 0).contiguous()
         '''
         back_points: in simple demonstratration
@@ -399,7 +437,8 @@ class CRF(nn.Module):
         back_points = back_points.transpose(1, 0).contiguous()
         # back_points: (seq_len, batch, tag_size, nbest)
         # decode from the end, padded position ids are 0, which will be filtered in following evaluation
-        decode_idx = autograd.Variable(torch.LongTensor(seq_len, batch_size, nbest))
+        decode_idx = autograd.Variable(
+            torch.LongTensor(seq_len, batch_size, nbest))
         if self.gpu:
             decode_idx = decode_idx.cuda()
         decode_idx[-1] = pointer.data / nbest
@@ -407,12 +446,14 @@ class CRF(nn.Module):
         # exit(0)
         # use old mask, let 0 means has token
         for idx in range(len(back_points) - 2, -1, -1):
-            new_pointer = torch.gather(back_points[idx].view(batch_size, tag_size * nbest), 1,
-                                       pointer.contiguous().view(batch_size, nbest))
+            new_pointer = torch.gather(
+                back_points[idx].view(batch_size, tag_size * nbest), 1,
+                pointer.contiguous().view(batch_size, nbest))
             decode_idx[idx] = new_pointer.data / nbest
             # use new pointer to remember the last end nbest ids for non longest
-            pointer = new_pointer + pointer.contiguous().view(batch_size, nbest) * mask[idx].view(batch_size, 1).expand(
-                batch_size, nbest).long()
+            pointer = new_pointer + pointer.contiguous().view(
+                batch_size, nbest) * mask[idx].view(batch_size, 1).expand(
+                    batch_size, nbest).long()
 
         # exit(0)
         path_score = None
@@ -422,7 +463,8 @@ class CRF(nn.Module):
         scores = end_partition[:, :, STOP_TAG]
         # scores: [batch_size, nbest]
         max_scores, _ = torch.max(scores, 1)
-        minus_scores = scores - max_scores.view(batch_size, 1).expand(batch_size, nbest)
+        minus_scores = scores - max_scores.view(batch_size, 1).expand(
+            batch_size, nbest)
         path_score = F.softmax(minus_scores, 1)
         # path_score: [batch_size, nbest]
         # exit(0)

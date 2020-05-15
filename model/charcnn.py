@@ -17,8 +17,11 @@ class CharCNN(nn.Module):
         self.hidden_dim = hidden_dim
         self.char_drop = nn.Dropout(dropout)
         self.char_embeddings = nn.Embedding(alphabet_size, embedding_dim)
-        self.char_embeddings.weight.data.copy_(torch.from_numpy(self.random_embedding(alphabet_size, embedding_dim)))
-        self.char_cnn = nn.Conv1d(embedding_dim, self.hidden_dim, kernel_size=3, padding=1)
+        self.char_embeddings.weight.data.copy_(
+            torch.from_numpy(
+                self.random_embedding(alphabet_size, embedding_dim)))
+        self.char_cnn = nn.Conv1d(
+            embedding_dim, self.hidden_dim, kernel_size=3, padding=1)
         if self.gpu:
             self.char_drop = self.char_drop.cuda()
             self.char_embeddings = self.char_embeddings.cuda()
@@ -28,7 +31,8 @@ class CharCNN(nn.Module):
         pretrain_emb = np.empty([vocab_size, embedding_dim])
         scale = np.sqrt(3.0 / embedding_dim)
         for index in range(vocab_size):
-            pretrain_emb[index, :] = np.random.uniform(-scale, scale, [1, embedding_dim])
+            pretrain_emb[index, :] = np.random.uniform(-scale, scale,
+                                                       [1, embedding_dim])
         return pretrain_emb
 
     def get_last_hiddens(self, input, seq_lengths):
@@ -44,7 +48,8 @@ class CharCNN(nn.Module):
         char_embeds = self.char_drop(self.char_embeddings(input))
         char_embeds = char_embeds.transpose(2, 1).contiguous()
         char_cnn_out = self.char_cnn(char_embeds)
-        char_cnn_out = F.max_pool1d(char_cnn_out, char_cnn_out.size(2)).view(batch_size, -1)
+        char_cnn_out = F.max_pool1d(char_cnn_out, char_cnn_out.size(2)).view(
+            batch_size, -1)
         return char_cnn_out
 
     def get_all_hiddens(self, input, seq_lengths):
