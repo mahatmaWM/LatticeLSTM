@@ -1,7 +1,6 @@
-*.py[cod]
-.idea/
 __pycache__
 *.dset
+*.pyc
 workspace.xml
 *.model
 *.txt
